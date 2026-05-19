@@ -10,6 +10,8 @@ async function createRequest(page: Page, title: string, body: string, file: stri
 
 test("happy path from request to completed history", async ({ page }) => {
   await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
 
   await createRequest(page, "Add safe approval", "승인 전에 충돌을 확인해줘", "src/app/safe-approval.tsx", "approval-safe");
   await expect(page.getByRole("heading", { name: "Add safe approval" })).toBeVisible();
@@ -26,6 +28,23 @@ test("happy path from request to completed history", async ({ page }) => {
 
   await page.getByPlaceholder("요청, 파일, 영역, 커밋 검색").fill("safe-approval");
   await expect(page.locator(".history-item").filter({ hasText: "src/app/safe-approval.tsx" })).toBeVisible();
+});
+
+test("persists issues and history after browser reload", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+
+  await createRequest(page, "Persistent request", "새로고침 후에도 남아야 한다", "src/app/persist.tsx", "persistence");
+  await page.getByRole("button", { name: "계획 작성" }).click();
+  await page.getByRole("button", { name: "계획 승인 및 작업 시작" }).click();
+  await page.getByRole("button", { name: "완료 후 자동 머지" }).click();
+
+  await page.reload();
+
+  await expect(page.getByText("Persistent request").first()).toBeVisible();
+  await page.getByPlaceholder("요청, 파일, 영역, 커밋 검색").fill("persist");
+  await expect(page.locator(".history-item").filter({ hasText: "src/app/persist.tsx" })).toBeVisible();
 });
 
 test("blocks approval when expected file and area overlap with active work", async ({ page }) => {

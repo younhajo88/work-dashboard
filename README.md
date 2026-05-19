@@ -21,6 +21,8 @@ The app currently implements the complete user-facing workflow with a simulated 
 
 Real Codex process control is intentionally capability-gated. The simulated runner is the safe default until process launch, log streaming, cancellation, and workspace isolation are verified on the local machine.
 
+On this machine, the WindowsApps Codex executable is discoverable but currently returns `Access is denied` when invoked from PowerShell. The app therefore keeps the real Codex runner disabled and surfaces capability status through `/api/runner/capabilities`.
+
 ## Setup
 
 ```bash
@@ -56,6 +58,6 @@ npx playwright install chromium
 
 ## Notes
 
-- The backend domain services and runner abstractions are implemented and tested, but the current UI uses local React state for the MVP workflow.
+- The backend domain services and runner abstractions are implemented and tested, but the current UI uses local browser persistence for the MVP workflow.
 - The real Codex runner adapter is scaffolded as a disabled capability-gated path.
-- Completion history is local in-memory state for this MVP pass; persistence wiring is represented in repository tests and can be connected to the UI in the next hardening pass.
+- Completion history persists in the browser between reloads for this MVP pass; server repository wiring is represented in tests and can be connected to the UI in the next hardening pass.

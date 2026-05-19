@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { checkApprovalConflicts, type ActiveWorkScope } from "../../shared/conflicts";
 import { filterHistoryRecords, type HistoryFilters } from "../../shared/history";
 import type { HistoryRecord, IssueStatus, IssueType } from "../../shared/types";
@@ -51,6 +51,12 @@ export interface BoardIssue {
   revisionCount: number;
 }
 
+interface PersistedBoardState {
+  selectedProjectId: string;
+  issues: BoardIssue[];
+  history: HistoryRecord[];
+}
+
 const initialProjects: BoardProject[] = [
   {
     id: "project-dashboard",
@@ -99,10 +105,15 @@ const seedIssue: BoardIssue = {
 
 export function useBoardStore() {
   const [projects] = useState(initialProjects);
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjects[0].id);
-  const [issues, setIssues] = useState<BoardIssue[]>([seedIssue]);
-  const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const persisted = loadPersistedBoardState();
+  const [selectedProjectId, setSelectedProjectId] = useState(persisted?.selectedProjectId ?? initialProjects[0].id);
+  const [issues, setIssues] = useState<BoardIssue[]>(persisted?.issues ?? [seedIssue]);
+  const [history, setHistory] = useState<HistoryRecord[]>(persisted?.history ?? []);
   const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({});
+
+  useEffect(() => {
+    savePersistedBoardState({ selectedProjectId, issues, history });
+  }, [history, issues, selectedProjectId]);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
   const projectIssues = issues.filter((issue) => issue.projectId === selectedProject.id);
@@ -346,4 +357,22 @@ function slug(value: string): string {
       .replace(/(^-|-$)/g, "")
       .slice(0, 40) || "work"
   );
+}
+
+function loadPersistedBoardState(): PersistedBoardState | undefined {
+  if (typeof window === "undefined") return undefined;
+  const raw = window.localStorage.getItem("local-ai-work-board-state");
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as PersistedBoardState;
+    if (!Array.isArray(parsed.issues) || !Array.isArray(parsed.history)) return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function savePersistedBoardState(state: PersistedBoardState): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem("local-ai-work-board-state", JSON.stringify(state));
 }

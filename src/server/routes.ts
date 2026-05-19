@@ -1,10 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { getRepository } from "./db";
+import { detectRunnerCapabilities } from "./runner/capabilities";
 
 export async function registerRoutes(app: FastifyInstance) {
   app.get("/api/projects", async () => {
     const repo = await getRepository();
     return repo.listProjects();
+  });
+
+  app.get("/api/runner/capabilities", async () => {
+    return detectRunnerCapabilities({
+      codexExecutable: process.env.CODEX_EXECUTABLE ?? "codex"
+    });
   });
 
   app.post<{
