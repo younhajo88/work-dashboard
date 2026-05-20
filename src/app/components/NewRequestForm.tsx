@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { IssueType } from "../../shared/types";
 
 interface Props {
-  onCreate: (input: { title: string; requestText: string; type: IssueType; fileHint?: string; areaHint?: string }) => void;
+  onCreate: (input: { title: string; requestText: string; type: IssueType; fileHint?: string; areaHint?: string }) => void | Promise<void>;
 }
 
 export function NewRequestForm({ onCreate }: Props) {

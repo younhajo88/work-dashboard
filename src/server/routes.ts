@@ -1,8 +1,26 @@
 import type { FastifyInstance } from "fastify";
 import { getRepository } from "./db";
 import { detectRunnerCapabilities } from "./runner/capabilities";
+import { SimulatedRunnerAdapter } from "./runner/simulatedRunner";
+import { RunnerService } from "./runner/runnerService";
+import type { IssueType } from "../shared/types";
+import type { CreateGitWorktreeInput, WorktreeMetadata } from "./git/worktreeService";
+import { CodexRunnerAdapter } from "./runner/codexRunner";
 
-export async function registerRoutes(app: FastifyInstance) {
+export interface RegisterRoutesOptions {
+  createWorktree?: (input: CreateGitWorktreeInput) => Promise<WorktreeMetadata>;
+}
+ 
+export async function registerRoutes(app: FastifyInstance, options: RegisterRoutesOptions = {}) {
+  app.get("/api/board", async () => {
+    const repo = await getRepository();
+    return {
+      projects: repo.listProjects(),
+      issues: repo.listIssueDetails(),
+      history: repo.listHistory()
+    };
+  });
+
   app.get("/api/projects", async () => {
     const repo = await getRepository();
     return repo.listProjects();
@@ -31,10 +49,89 @@ export async function registerRoutes(app: FastifyInstance) {
     });
   });
 
+  app.post<{
+    Body: {
+      projectId: string;
+      title: string;
+      requestText: string;
+      type: IssueType;
+      fileHint?: string;
+      areaHint?: string;
+    };
+  }>("/api/issues", async (request) => {
+    const repo = await getRepository();
+    const issue = repo.createIssue({
+      projectId: request.body.projectId,
+      title: request.body.title,
+      requestText: request.body.requestText,
+      type: request.body.type
+    });
+    repo.appendMessage({ issueId: issue.id, author: "user", body: request.body.requestText });
+    repo.appendMessage({
+      issueId: issue.id,
+      author: "ai",
+      body: "요청을 확인했습니다. 계획 작성을 위해 의도와 구현 범위를 정리합니다."
+    });
+    if (request.body.fileHint || request.body.areaHint) {
+      repo.savePlan(createDraftPlanInput(issue.id, request.body.title, request.body.fileHint, request.body.areaHint));
+    }
+    return repo.getIssueDetail(issue.id);
+  });
+
+  app.post<{ Params: { issueId: string }; Body: { body: string } }>("/api/issues/:issueId/messages", async (request, reply) => {
+    const repo = await getRepository();
+    const detail = repo.getIssueDetail(request.params.issueId);
+    if (!detail) return reply.code(404).send({ message: "Issue not found" });
+    repo.appendMessage({ issueId: request.params.issueId, author: "user", body: request.body.body });
+    return repo.getIssueDetail(request.params.issueId);
+  });
+
+  app.post<{ Params: { issueId: string } }>("/api/issues/:issueId/plan", async (request, reply) => {
+    const repo = await getRepository();
+    const detail = repo.getIssueDetail(request.params.issueId);
+    if (!detail) return reply.code(404).send({ message: "Issue not found" });
+    repo.savePlan(createDraftPlanInput(detail.issue.id, detail.issue.title));
+    return repo.getIssueDetail(detail.issue.id);
+  });
+
+  app.post<{ Params: { issueId: string; planId: string } }>("/api/issues/:issueId/plans/:planId/approve", async (request, reply) => {
+    const repo = await getRepository();
+    const detail = repo.getIssueDetail(request.params.issueId);
+    if (!detail) return reply.code(404).send({ message: "Issue not found" });
+    const service = new RunnerService(repo, process.env.WORK_BOARD_RUNNER === "codex" ? new CodexRunnerAdapter() : new SimulatedRunnerAdapter(), {
+      createWorktree: options.createWorktree
+    });
+    await service.startApprovedRun(request.params.issueId, request.params.planId);
+    return repo.getIssueDetail(request.params.issueId);
+  });
+
   app.get<{ Params: { issueId: string } }>("/api/issues/:issueId", async (request, reply) => {
     const repo = await getRepository();
     const detail = repo.getIssueDetail(request.params.issueId);
     if (!detail) return reply.code(404).send({ message: "Issue not found" });
     return detail;
   });
+}
+
+function createDraftPlanInput(issueId: string, title: string, fileHint?: string, areaHint?: string) {
+  const slug = slugTitle(title);
+  return {
+    issueId,
+    productPlan: `${title} 요청의 사용자 의도와 완료 기준을 정리합니다.`,
+    implementationPlan: "예상 수정 범위를 확인하고 충돌 없이 구현한 뒤 검증합니다.",
+    expectedFiles: [fileHint || `src/app/${slug}.tsx`],
+    functionalAreas: [areaHint || "dashboard"],
+    validationPlan: ["npm run test", "npm run build"],
+    steps: ["요구사항 반영", "구현", "검증"]
+  };
+}
+
+function slugTitle(value: string): string {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .slice(0, 40) || "work"
+  );
 }

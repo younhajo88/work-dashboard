@@ -29,6 +29,7 @@ export interface IssueDetail {
   plans: Plan[];
   steps: PlanStep[];
   runs: WorkRun[];
+  runDetail?: RunDetail;
 }
 
 export interface RunDetail {
@@ -149,13 +150,22 @@ export class Repository {
     if (!issue) return undefined;
     const plans = [...this.plans.values()].filter((plan) => plan.issueId === issueId);
     const runs = [...this.runs.values()].filter((run) => run.issueId === issueId);
+    const latestRun = runs.at(-1);
     return {
       issue,
       messages: this.messages.get(issueId) ?? [],
       plans,
       steps: plans.flatMap((plan) => this.planSteps.get(plan.id) ?? []),
-      runs
+      runs,
+      runDetail: latestRun ? this.getRun(latestRun.id) : undefined
     };
+  }
+
+  listIssueDetails(projectId?: string): IssueDetail[] {
+    return [...this.issues.values()]
+      .filter((issue) => !projectId || issue.projectId === projectId)
+      .map((issue) => this.getIssueDetail(issue.id))
+      .filter((detail): detail is IssueDetail => Boolean(detail));
   }
 
   getPlan(planId: string): (Plan & { steps: PlanStep[] }) | undefined {
@@ -204,6 +214,10 @@ export class Repository {
 
   searchHistory(filters: HistoryFilters): HistoryRecord[] {
     return filterHistoryRecords([...this.history.values()], filters);
+  }
+
+  listHistory(): HistoryRecord[] {
+    return [...this.history.values()];
   }
 
   removeUnmergedIssue(issueId: string): void {

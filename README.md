@@ -59,6 +59,13 @@ wsl -d Ubuntu -- bash -lc "source ~/.profile; codex --version"
 npm run server
 ```
 
+Approved runs use the simulated adapter by default. To route approved runs through the real Codex adapter:
+
+```powershell
+$env:WORK_BOARD_RUNNER="codex"
+npm run server
+```
+
 Check the selected runner target:
 
 ```text

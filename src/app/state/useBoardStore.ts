@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { checkApprovalConflicts, type ActiveWorkScope } from "../../shared/conflicts";
 import { filterHistoryRecords, type HistoryFilters } from "../../shared/history";
-import type { HistoryRecord, IssueStatus, IssueType } from "../../shared/types";
+import type { HistoryRecord, IssueStatus, IssueType, Project } from "../../shared/types";
+import {
+  addIssueMessage,
+  approveIssuePlan,
+  createIssueOnServer,
+  draftIssuePlan,
+  getBoardSnapshot,
+  type ApiBoardSnapshot,
+  type ApiIssueDetail
+} from "../api/board";
 
-export interface BoardProject {
-  id: string;
-  name: string;
-  repositoryPath: string;
-  defaultBranch: string;
-  requiredValidationCommands: string[];
-}
+export type BoardProject = Project;
 
 export interface BoardMessage {
   id: string;
@@ -18,6 +21,7 @@ export interface BoardMessage {
 }
 
 export interface BoardPlan {
+  id?: string;
   productPlan: string;
   implementationPlan: string;
   expectedFiles: string[];
@@ -31,18 +35,13 @@ export interface BoardRun {
   branchName: string;
   worktreePath: string;
   runnerName: string;
-  runnerMode: "simulated" | "real_ready_simulated_preview";
+  runnerMode: "simulated" | "real_ready_simulated_preview" | "server";
   currentStep: number;
   totalSteps: number;
   summary: string;
   rawLogs: string[];
   validation: "stale" | "passing" | "failing";
   runnerUnavailableReason?: string;
-}
-
-export interface RunnerReadiness {
-  codexAvailable: boolean;
-  codexTarget?: string;
 }
 
 export interface BoardIssue {
@@ -58,32 +57,28 @@ export interface BoardIssue {
   revisionCount: number;
 }
 
+export interface RunnerReadiness {
+  codexAvailable: boolean;
+  codexTarget?: string;
+}
+
 interface PersistedBoardState {
   selectedProjectId: string;
   issues: BoardIssue[];
   history: HistoryRecord[];
 }
 
-const initialProjects: BoardProject[] = [
-  {
-    id: "project-dashboard",
-    name: "작업대시보드",
-    repositoryPath: "C:/Users/younh/OneDrive/문서/작업대시보드",
-    defaultBranch: "master",
-    requiredValidationCommands: ["npm run test", "npm run build"]
-  },
-  {
-    id: "project-store",
-    name: "Web Store",
-    repositoryPath: "C:/work/web-store",
-    defaultBranch: "main",
-    requiredValidationCommands: ["npm run test"]
-  }
-];
+const fallbackProject: BoardProject = {
+  id: "project-dashboard",
+  name: "작업대시보드",
+  repositoryPath: "C:/Users/younh/OneDrive/문서/작업대시보드",
+  defaultBranch: "master",
+  requiredValidationCommands: ["npm run test", "npm run build"]
+};
 
 const seedIssue: BoardIssue = {
   id: "issue-seed-review",
-  projectId: "project-dashboard",
+  projectId: fallbackProject.id,
   title: "Seed review item",
   requestText: "Seeded item for review action testing",
   type: "feature",
@@ -113,68 +108,71 @@ const seedIssue: BoardIssue = {
 };
 
 export function useBoardStore() {
-  const [projects] = useState(initialProjects);
   const persisted = loadPersistedBoardState();
-  const [selectedProjectId, setSelectedProjectId] = useState(persisted?.selectedProjectId ?? initialProjects[0].id);
+  const [serverBacked, setServerBacked] = useState(false);
+  const [projects, setProjects] = useState<BoardProject[]>([fallbackProject]);
+  const [selectedProjectId, setSelectedProjectId] = useState(persisted?.selectedProjectId ?? fallbackProject.id);
   const [issues, setIssues] = useState<BoardIssue[]>(persisted?.issues ?? [seedIssue]);
   const [history, setHistory] = useState<HistoryRecord[]>(persisted?.history ?? []);
   const [historyFilters, setHistoryFilters] = useState<HistoryFilters>({});
 
   useEffect(() => {
-    savePersistedBoardState({ selectedProjectId, issues, history });
-  }, [history, issues, selectedProjectId]);
+    let active = true;
+    getBoardSnapshot()
+      .then((snapshot) => {
+        if (!active) return;
+        applyServerSnapshot(snapshot);
+      })
+      .catch(() => {
+        if (active) setServerBacked(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+  useEffect(() => {
+    if (!serverBacked) savePersistedBoardState({ selectedProjectId, issues, history });
+  }, [history, issues, selectedProjectId, serverBacked]);
+
+  const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? fallbackProject;
   const projectIssues = issues.filter((issue) => issue.projectId === selectedProject.id);
   const filteredHistory = useMemo(
     () => filterHistoryRecords(history, { ...historyFilters, projectId: selectedProject.id }),
     [history, historyFilters, selectedProject.id]
   );
 
-  function createIssue(input: { title: string; requestText: string; type: IssueType; fileHint?: string; areaHint?: string }) {
-    const issue: BoardIssue = {
-      id: id("issue"),
-      projectId: selectedProject.id,
-      title: input.title,
-      requestText: input.requestText,
-      type: input.type,
-      status: "request_clarification",
-      revisionCount: 0,
-      messages: [
-        { id: id("message"), author: "user", body: input.requestText },
-        {
-          id: id("message"),
-          author: "ai",
-          body: "요청을 확인했습니다. 계획 작성을 위해 의도와 구현 범위를 정리합니다."
-        }
-      ],
-      plan: input.fileHint || input.areaHint ? createPlan(input.title, input.fileHint, input.areaHint) : undefined
-    };
+  async function createIssue(input: { title: string; requestText: string; type: IssueType; fileHint?: string; areaHint?: string }): Promise<string> {
+    if (serverBacked) {
+      const detail = await createIssueOnServer({ projectId: selectedProject.id, ...input });
+      mergeServerIssue(detail);
+      return detail.issue.id;
+    }
+
+    const issue = createLocalIssue(input);
     setIssues((current) => [issue, ...current]);
     return issue.id;
   }
 
-  function addMessage(issueId: string, body: string) {
+  async function addMessage(issueId: string, body: string) {
+    if (serverBacked) {
+      mergeServerIssue(await addIssueMessage(issueId, body));
+      return;
+    }
     setIssues((current) =>
       current.map((issue) =>
-        issue.id === issueId
-          ? { ...issue, messages: [...issue.messages, { id: id("message"), author: "user", body }] }
-          : issue
+        issue.id === issueId ? { ...issue, messages: [...issue.messages, { id: id("message"), author: "user", body }] } : issue
       )
     );
   }
 
-  function draftPlan(issueId: string) {
+  async function draftPlan(issueId: string) {
+    if (serverBacked) {
+      mergeServerIssue(await draftIssuePlan(issueId));
+      return;
+    }
     setIssues((current) =>
-      current.map((issue) =>
-        issue.id === issueId
-          ? {
-              ...issue,
-              status: "plan_approval",
-              plan: issue.plan ?? createPlan(issue.title)
-            }
-          : issue
-      )
+      current.map((issue) => (issue.id === issueId ? { ...issue, status: "plan_approval", plan: issue.plan ?? createPlan(issue.title) } : issue))
     );
   }
 
@@ -212,19 +210,25 @@ export function useBoardStore() {
     );
   }
 
-  function approvePlan(issueId: string, runner?: RunnerReadiness) {
+  async function approvePlan(issueId: string, runner?: RunnerReadiness) {
+    const issue = issues.find((item) => item.id === issueId);
+    if (serverBacked && issue?.plan?.id) {
+      mergeServerIssue(await approveIssuePlan(issueId, issue.plan.id));
+      return;
+    }
+
     setIssues((current) =>
-      current.map((issue) => {
-        if (issue.id !== issueId || !issue.plan) return issue;
+      current.map((item) => {
+        if (item.id !== issueId || !item.plan) return item;
         const result = checkApprovalConflicts(
           {
-            projectId: issue.projectId,
-            issueId: issue.id,
-            expectedFiles: issue.plan.expectedFiles,
-            functionalAreas: issue.plan.functionalAreas
+            projectId: item.projectId,
+            issueId: item.id,
+            expectedFiles: item.plan.expectedFiles,
+            functionalAreas: item.plan.functionalAreas
           },
           current
-            .filter((other) => other.id !== issue.id && other.projectId === issue.projectId)
+            .filter((other) => other.id !== item.id && other.projectId === item.projectId)
             .map((other) => ({
               projectId: other.projectId,
               issueId: other.id,
@@ -233,8 +237,8 @@ export function useBoardStore() {
               functionalAreas: other.plan?.functionalAreas ?? []
             }))
         );
-        if (result.status === "blocked") return issue;
-        return runIssue({ ...issue, plan: { ...issue.plan, approved: true } }, runner);
+        if (result.status === "blocked") return item;
+        return runIssue({ ...item, plan: { ...item.plan, approved: true } }, runner);
       })
     );
   }
@@ -250,7 +254,7 @@ export function useBoardStore() {
       planSummary: issue.plan.implementationPlan,
       changedFiles: issue.plan.expectedFiles,
       functionalAreas: issue.plan.functionalAreas,
-      validationSummary: "Simulated validation passed",
+      validationSummary: issue.run.summary,
       feedback: issue.messages.filter((message) => message.author === "user").map((message) => message.body),
       mergeCommit: `merge_${Math.random().toString(16).slice(2, 10)}`,
       completedAt: new Date().toISOString(),
@@ -287,14 +291,23 @@ export function useBoardStore() {
     setIssues((current) =>
       current.map((issue) =>
         issue.id === issueId
-          ? {
-              ...issue,
-              status: "blocked_by_scope_change",
-              messages: [...issue.messages, { id: id("message"), author: "user", body: comment }]
-            }
+          ? { ...issue, status: "blocked_by_scope_change", messages: [...issue.messages, { id: id("message"), author: "user", body: comment }] }
           : issue
       )
     );
+  }
+
+  function applyServerSnapshot(snapshot: ApiBoardSnapshot) {
+    setServerBacked(true);
+    setProjects(snapshot.projects.length ? snapshot.projects : [fallbackProject]);
+    setIssues(snapshot.issues.map(toBoardIssue));
+    setHistory(snapshot.history);
+    setSelectedProjectId((current) => (snapshot.projects.some((project) => project.id === current) ? current : snapshot.projects[0]?.id ?? fallbackProject.id));
+  }
+
+  function mergeServerIssue(detail: ApiIssueDetail) {
+    const boardIssue = toBoardIssue(detail);
+    setIssues((current) => [boardIssue, ...current.filter((issue) => issue.id !== boardIssue.id)]);
   }
 
   return {
@@ -316,6 +329,67 @@ export function useBoardStore() {
     reviseIssue,
     removeIssue,
     markScopeChange
+  };
+
+  function createLocalIssue(input: { title: string; requestText: string; type: IssueType; fileHint?: string; areaHint?: string }): BoardIssue {
+    return {
+      id: id("issue"),
+      projectId: selectedProject.id,
+      title: input.title,
+      requestText: input.requestText,
+      type: input.type,
+      status: "request_clarification",
+      revisionCount: 0,
+      messages: [
+        { id: id("message"), author: "user", body: input.requestText },
+        { id: id("message"), author: "ai", body: "요청을 확인했습니다. 계획 작성을 위해 의도와 구현 범위를 정리합니다." }
+      ],
+      plan: input.fileHint || input.areaHint ? createPlan(input.title, input.fileHint, input.areaHint) : undefined
+    };
+  }
+}
+
+function toBoardIssue(detail: ApiIssueDetail): BoardIssue {
+  const latestPlan = detail.plans.at(-1);
+  const latestRun = detail.runs.at(-1);
+  const planSteps = latestPlan ? detail.steps.filter((step) => step.planId === latestPlan.id).sort((a, b) => a.index - b.index) : [];
+  const events = detail.runDetail?.events ?? [];
+  const validation = detail.runDetail?.validationResults.at(-1)?.status ?? (latestRun?.status === "review_ready" ? "passing" : "stale");
+  return {
+    id: detail.issue.id,
+    projectId: detail.issue.projectId,
+    title: detail.issue.title,
+    requestText: detail.issue.requestText,
+    type: detail.issue.type ?? "other",
+    status: detail.issue.status,
+    revisionCount: detail.messages.filter((message) => message.body.toLowerCase().includes("revision") || message.body.includes("재수정")).length,
+    messages: detail.messages.map((message) => ({ id: message.id, author: message.author, body: message.body })),
+    plan: latestPlan
+      ? {
+          id: latestPlan.id,
+          productPlan: latestPlan.productPlan,
+          implementationPlan: latestPlan.implementationPlan,
+          expectedFiles: latestPlan.expectedFiles,
+          functionalAreas: latestPlan.functionalAreas,
+          validationPlan: latestPlan.validationPlan,
+          steps: planSteps.map((step) => step.title),
+          approved: latestPlan.status === "approved"
+        }
+      : undefined,
+    run: latestRun
+      ? {
+          branchName: latestRun.branchName,
+          worktreePath: latestRun.worktreePath,
+          runnerName: latestRun.adapterId === "simulated" ? "Simulated Runner" : latestRun.adapterId,
+          runnerMode: "server",
+          currentStep: latestRun.currentStepIndex || latestRun.totalSteps,
+          totalSteps: latestRun.totalSteps,
+          summary: events.at(-1)?.summary ?? latestRun.status,
+          rawLogs: events.map((event) => event.raw ?? event.summary),
+          validation,
+          runnerUnavailableReason: latestRun.adapterId === "simulated" ? "Server run used the simulated adapter. Live Codex streaming is the next integration step." : undefined
+        }
+      : undefined
   };
 }
 

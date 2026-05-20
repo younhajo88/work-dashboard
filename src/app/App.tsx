@@ -37,8 +37,8 @@ export function App() {
           <p>Requests, plan approval, work progress, review, and history stay in one project view.</p>
         </header>
         <NewRequestForm
-          onCreate={(input) => {
-            const id = board.createIssue(input);
+          onCreate={async (input) => {
+            const id = await board.createIssue(input);
             setSelectedIssueId(id);
           }}
         />
@@ -48,11 +48,11 @@ export function App() {
       <IssueDetail
         issue={selectedIssue}
         approvalResult={approvalResult}
-        onMessage={(body) => selectedIssue && board.addMessage(selectedIssue.id, body)}
-        onDraftPlan={() => selectedIssue && board.draftPlan(selectedIssue.id)}
+        onMessage={(body) => selectedIssue && void board.addMessage(selectedIssue.id, body)}
+        onDraftPlan={() => selectedIssue && void board.draftPlan(selectedIssue.id)}
         onApprove={() =>
           selectedIssue &&
-          board.approvePlan(selectedIssue.id, {
+          void board.approvePlan(selectedIssue.id, {
             codexAvailable: Boolean(runnerCapabilities.report?.codex.available),
             codexTarget: runnerCapabilities.report?.codex.target
           })
