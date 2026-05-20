@@ -15,6 +15,8 @@ export function RunProgress({ issue, onScopeComment }: Props) {
       <h3>작업 진행</h3>
       <p><strong>{issue.run.currentStep} / {issue.run.totalSteps}</strong> · {issue.run.summary}</p>
       <p>브랜치: <code>{issue.run.branchName}</code></p>
+      <p>Runner <code>{issue.run.runnerName}</code></p>
+      {issue.run.runnerMode === "real_ready_simulated_preview" && <p className="notice">Real runner ready; this board run is still using the simulated preview flow until live run streaming is enabled.</p>}
       {issue.run.runnerUnavailableReason && <p className="notice">{issue.run.runnerUnavailableReason}</p>}
       <button onClick={() => setOpen((value) => !value)}>{open ? "원문 로그 접기" : "원문 로그 보기"}</button>
       {open && <pre>{issue.run.rawLogs.join("\n")}</pre>}

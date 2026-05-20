@@ -94,6 +94,37 @@ button {
   color: var(--muted);
 }
 
+.runner-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px 0;
+  border: 1px solid #d9dee8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.runner-status strong {
+  font-size: 13px;
+}
+
+.runner-status small {
+  color: var(--muted);
+}
+
+.runner-status-ready {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.runner-status-warn {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
 .eyebrow {
   color: var(--accent) !important;
   font-size: 12px;

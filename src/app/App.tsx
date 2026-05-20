@@ -4,10 +4,13 @@ import { IssueBoard } from "./components/IssueBoard";
 import { IssueDetail } from "./components/IssueDetail";
 import { NewRequestForm } from "./components/NewRequestForm";
 import { ProjectSidebar } from "./components/ProjectSidebar";
+import { RunnerStatus } from "./components/RunnerStatus";
+import { useRunnerCapabilities } from "./hooks/useRunnerCapabilities";
 import { useBoardStore } from "./state/useBoardStore";
 
 export function App() {
   const board = useBoardStore();
+  const runnerCapabilities = useRunnerCapabilities();
   const [selectedIssueId, setSelectedIssueId] = useState<string | undefined>(board.issues[0]?.id);
   const selectedIssue = useMemo(
     () => board.issues.find((issue) => issue.id === selectedIssueId) ?? board.issues[0],
@@ -30,7 +33,8 @@ export function App() {
         <header>
           <p className="eyebrow">Selected Project</p>
           <h2>{board.selectedProject.name}</h2>
-          <p>요청, 계획 승인, 작업 진행, 검토, 히스토리를 한 곳에서 관리합니다.</p>
+          <RunnerStatus state={runnerCapabilities} />
+          <p>Requests, plan approval, work progress, review, and history stay in one project view.</p>
         </header>
         <NewRequestForm
           onCreate={(input) => {
@@ -46,7 +50,13 @@ export function App() {
         approvalResult={approvalResult}
         onMessage={(body) => selectedIssue && board.addMessage(selectedIssue.id, body)}
         onDraftPlan={() => selectedIssue && board.draftPlan(selectedIssue.id)}
-        onApprove={() => selectedIssue && board.approvePlan(selectedIssue.id)}
+        onApprove={() =>
+          selectedIssue &&
+          board.approvePlan(selectedIssue.id, {
+            codexAvailable: Boolean(runnerCapabilities.report?.codex.available),
+            codexTarget: runnerCapabilities.report?.codex.target
+          })
+        }
         onComplete={() => selectedIssue && board.completeIssue(selectedIssue.id)}
         onRevise={(comment) => selectedIssue && board.reviseIssue(selectedIssue.id, comment)}
         onRemove={() => selectedIssue && board.removeIssue(selectedIssue.id)}

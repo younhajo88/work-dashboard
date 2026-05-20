@@ -32,6 +32,12 @@ npm install
 ## Run
 
 ```bash
+npm run server
+```
+
+In another terminal:
+
+```bash
 npm run dev
 ```
 
@@ -40,6 +46,8 @@ Open:
 ```text
 http://127.0.0.1:5173/
 ```
+
+The Vite dev server proxies `/api/*` to the local backend on `127.0.0.1:4174`, so the dashboard can display real Codex runner capability status while keeping the frontend on port `5173`.
 
 ## Codex CLI Runner
 

@@ -30,12 +30,19 @@ export interface BoardPlan {
 export interface BoardRun {
   branchName: string;
   worktreePath: string;
+  runnerName: string;
+  runnerMode: "simulated" | "real_ready_simulated_preview";
   currentStep: number;
   totalSteps: number;
   summary: string;
   rawLogs: string[];
   validation: "stale" | "passing" | "failing";
   runnerUnavailableReason?: string;
+}
+
+export interface RunnerReadiness {
+  codexAvailable: boolean;
+  codexTarget?: string;
 }
 
 export interface BoardIssue {
@@ -95,6 +102,8 @@ const seedIssue: BoardIssue = {
   run: {
     branchName: "codex/seed-review-item",
     worktreePath: ".worktrees/seed-review-item",
+    runnerName: "Simulated Runner",
+    runnerMode: "simulated",
     currentStep: 1,
     totalSteps: 1,
     summary: "검증 완료, 사용자 검토 대기 중",
@@ -203,7 +212,7 @@ export function useBoardStore() {
     );
   }
 
-  function approvePlan(issueId: string) {
+  function approvePlan(issueId: string, runner?: RunnerReadiness) {
     setIssues((current) =>
       current.map((issue) => {
         if (issue.id !== issueId || !issue.plan) return issue;
@@ -225,7 +234,7 @@ export function useBoardStore() {
             }))
         );
         if (result.status === "blocked") return issue;
-        return runIssue({ ...issue, plan: { ...issue.plan, approved: true } });
+        return runIssue({ ...issue, plan: { ...issue.plan, approved: true } }, runner);
       })
     );
   }
@@ -310,24 +319,32 @@ export function useBoardStore() {
   };
 }
 
-function runIssue(issue: BoardIssue): BoardIssue {
+function runIssue(issue: BoardIssue, runner?: RunnerReadiness): BoardIssue {
   const totalSteps = issue.plan?.steps.length ?? 1;
   const validation: BoardRun["validation"] = issue.title.toLowerCase().includes("fail validation") ? "failing" : "passing";
+  const realRunnerReady = Boolean(runner?.codexAvailable);
   return {
     ...issue,
     status: "review_request",
     run: {
       branchName: `codex/${slug(issue.title)}`,
       worktreePath: `.worktrees/${slug(issue.title)}`,
+      runnerName: realRunnerReady ? runner?.codexTarget ?? "Codex CLI" : "Simulated Runner",
+      runnerMode: realRunnerReady ? "real_ready_simulated_preview" : "simulated",
       currentStep: totalSteps,
       totalSteps,
       summary:
         validation === "passing"
           ? `${totalSteps} / ${totalSteps} 단계 완료. 검증 통과 후 검토 대기 중입니다.`
           : `${totalSteps} / ${totalSteps} 단계 완료. 검증 실패로 완료할 수 없습니다.`,
-      rawLogs: ["simulated:start", validation === "passing" ? "PASS simulated validation" : "FAIL simulated validation", "simulated:complete"],
+      rawLogs: [
+        realRunnerReady ? `real-runner-ready:${runner?.codexTarget ?? "Codex CLI"}` : "real-runner-unavailable",
+        "simulated:start",
+        validation === "passing" ? "PASS simulated validation" : "FAIL simulated validation",
+        "simulated:complete"
+      ],
       validation,
-      runnerUnavailableReason: "Real Codex runner unavailable: capability checks have not passed."
+      runnerUnavailableReason: realRunnerReady ? undefined : "Real Codex runner unavailable: capability checks have not passed."
     }
   };
 }
