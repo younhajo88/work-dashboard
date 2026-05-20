@@ -3,6 +3,7 @@ import type { RunEvent, WorkRun } from "../../shared/types";
 export interface RunnerCapabilityStatus {
   available: boolean;
   reasons: string[];
+  target?: string;
 }
 
 export interface RunnerCapabilities {

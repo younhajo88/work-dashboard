@@ -10,7 +10,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   app.get("/api/runner/capabilities", async () => {
     return detectRunnerCapabilities({
-      codexExecutable: process.env.CODEX_EXECUTABLE ?? "codex"
+      codexExecutable: process.env.CODEX_EXECUTABLE
     });
   });
 

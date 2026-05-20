@@ -17,11 +17,11 @@ The app currently implements the complete user-facing workflow with a simulated 
 - Revision loop back to clarification and planning
 - Destructive removal for unmerged review work
 - Completion history search and filters
-- Real Codex runner availability messaging
+- Real Codex runner availability messaging with WSL Ubuntu detection
 
-Real Codex process control is intentionally capability-gated. The simulated runner is the safe default until process launch, log streaming, cancellation, and workspace isolation are verified on the local machine.
+Real Codex process control is capability-gated. The simulated runner remains the safe UI default, while the backend now detects a launchable Codex CLI target and can invoke `codex exec --json` through the runner adapter.
 
-On this machine, the WindowsApps Codex executable is discoverable but currently returns `Access is denied` when invoked from PowerShell. The app therefore keeps the real Codex runner disabled and surfaces capability status through `/api/runner/capabilities`.
+On this machine, the WindowsApps Codex executable is discoverable but can be blocked by `Access is denied` when invoked from automation. The app therefore prefers the user-local WSL Ubuntu Codex CLI at `/home/younha/.npm-global/bin/codex` when no `CODEX_EXECUTABLE` override is provided, and surfaces the selected target through `/api/runner/capabilities`.
 
 ## Setup
 
@@ -41,6 +41,23 @@ Open:
 http://127.0.0.1:5173/
 ```
 
+## Codex CLI Runner
+
+The backend capability probe prefers WSL Ubuntu when `CODEX_EXECUTABLE` is unset:
+
+```powershell
+wsl -d Ubuntu -- bash -lc "source ~/.profile; codex --version"
+npm run server
+```
+
+Check the selected runner target:
+
+```text
+GET http://127.0.0.1:4174/api/runner/capabilities
+```
+
+Set `CODEX_EXECUTABLE` only when you intentionally want to force a specific native executable before the WSL fallback.
+
 ## Verify
 
 ```bash
@@ -59,5 +76,5 @@ npx playwright install chromium
 ## Notes
 
 - The backend domain services and runner abstractions are implemented and tested, but the current UI uses local browser persistence for the MVP workflow.
-- The real Codex runner adapter is scaffolded as a disabled capability-gated path.
+- The real Codex runner adapter is capability-gated and launches `codex exec --json` through the resolved target.
 - Completion history persists in the browser between reloads for this MVP pass; server repository wiring is represented in tests and can be connected to the UI in the next hardening pass.
