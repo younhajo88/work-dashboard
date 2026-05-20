@@ -50,6 +50,8 @@ http://127.0.0.1:5173/
 
 The Vite dev server proxies `/api/*` to the local backend on `127.0.0.1:4174`, so the dashboard can display real Codex runner capability status while keeping the frontend on port `5173`.
 
+Server state is stored in `.work-board/state.json` by default. Override the path with `WORK_BOARD_STATE_PATH` when you want a separate local database file.
+
 ## Codex CLI Runner
 
 The backend capability probe prefers WSL Ubuntu when `CODEX_EXECUTABLE` is unset:

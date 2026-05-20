@@ -1,4 +1,5 @@
 .superpowers/
+.work-board/
 node_modules/
 dist/
 test-results/

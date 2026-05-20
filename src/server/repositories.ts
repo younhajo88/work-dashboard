@@ -23,6 +23,23 @@ type CreateRunInput = Pick<WorkRun, "issueId" | "planId" | "adapterId" | "branch
 type AppendRunEventInput = Pick<RunEvent, "runId" | "summary"> & { type: RunnerEventType; raw?: string; stepIndex?: number };
 type SaveValidationInput = Pick<ValidationResult, "runId" | "kind" | "command" | "status" | "summary">;
 
+export interface RepositorySnapshot {
+  projects: Project[];
+  issues: Issue[];
+  messages: Array<[string, IssueMessage[]]>;
+  plans: Plan[];
+  planSteps: Array<[string, PlanStep[]]>;
+  runs: WorkRun[];
+  runEvents: Array<[string, RunEvent[]]>;
+  validationResults: Array<[string, ValidationResult[]]>;
+  history: HistoryRecord[];
+}
+
+export interface RepositoryOptions {
+  snapshot?: RepositorySnapshot;
+  onChange?: (snapshot: RepositorySnapshot) => void;
+}
+
 export interface IssueDetail {
   issue: Issue;
   messages: IssueMessage[];
@@ -49,9 +66,14 @@ export class Repository {
   private validationResults = new Map<string, ValidationResult[]>();
   private history = new Map<string, HistoryRecord>();
 
+  constructor(private readonly options: RepositoryOptions = {}) {
+    if (options.snapshot) this.loadSnapshot(options.snapshot);
+  }
+
   createProject(input: CreateProjectInput): Project {
     const project = { id: id("project"), ...input };
     this.projects.set(project.id, project);
+    this.emitChange();
     return project;
   }
 
@@ -73,11 +95,13 @@ export class Repository {
       type: input.type
     };
     this.issues.set(issue.id, issue);
+    this.emitChange();
     return issue;
   }
 
   updateIssue(issue: Issue): Issue {
     this.issues.set(issue.id, issue);
+    this.emitChange();
     return issue;
   }
 
@@ -88,6 +112,7 @@ export class Repository {
       ...input
     };
     this.messages.set(input.issueId, [...(this.messages.get(input.issueId) ?? []), message]);
+    this.emitChange();
     return message;
   }
 
@@ -105,6 +130,8 @@ export class Repository {
     const issue = this.issues.get(input.issueId);
     if (issue) {
       this.updateIssue({ ...issue, status: "plan_approval", currentPlanId: plan.id });
+    } else {
+      this.emitChange();
     }
     return plan;
   }
@@ -120,12 +147,15 @@ export class Repository {
     const issue = this.issues.get(input.issueId);
     if (issue) {
       this.updateIssue({ ...issue, currentRunId: run.id });
+    } else {
+      this.emitChange();
     }
     return run;
   }
 
   updateRun(run: WorkRun): WorkRun {
     this.runs.set(run.id, run);
+    this.emitChange();
     return run;
   }
 
@@ -136,12 +166,14 @@ export class Repository {
       ...input
     };
     this.runEvents.set(input.runId, [...(this.runEvents.get(input.runId) ?? []), event]);
+    this.emitChange();
     return event;
   }
 
   saveValidationResult(input: SaveValidationInput): ValidationResult {
     const result: ValidationResult = { id: id("validation"), ...input };
     this.validationResults.set(input.runId, [...(this.validationResults.get(input.runId) ?? []), result]);
+    this.emitChange();
     return result;
   }
 
@@ -209,6 +241,7 @@ export class Repository {
       outcome: input.outcome
     };
     this.history.set(history.id, history);
+    this.emitChange();
     return history;
   }
 
@@ -233,6 +266,37 @@ export class Repository {
     }
     this.messages.delete(issueId);
     this.issues.delete(issueId);
+    this.emitChange();
+  }
+
+  snapshot(): RepositorySnapshot {
+    return {
+      projects: [...this.projects.values()],
+      issues: [...this.issues.values()],
+      messages: [...this.messages.entries()],
+      plans: [...this.plans.values()],
+      planSteps: [...this.planSteps.entries()],
+      runs: [...this.runs.values()],
+      runEvents: [...this.runEvents.entries()],
+      validationResults: [...this.validationResults.entries()],
+      history: [...this.history.values()]
+    };
+  }
+
+  private loadSnapshot(snapshot: RepositorySnapshot): void {
+    this.projects = new Map(snapshot.projects.map((project) => [project.id, project]));
+    this.issues = new Map(snapshot.issues.map((issue) => [issue.id, issue]));
+    this.messages = new Map(snapshot.messages ?? []);
+    this.plans = new Map(snapshot.plans.map((plan) => [plan.id, plan]));
+    this.planSteps = new Map(snapshot.planSteps ?? []);
+    this.runs = new Map(snapshot.runs.map((run) => [run.id, run]));
+    this.runEvents = new Map(snapshot.runEvents ?? []);
+    this.validationResults = new Map(snapshot.validationResults ?? []);
+    this.history = new Map(snapshot.history.map((record) => [record.id, record]));
+  }
+
+  private emitChange(): void {
+    this.options.onChange?.(this.snapshot());
   }
 }
 
