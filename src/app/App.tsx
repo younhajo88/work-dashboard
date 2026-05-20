@@ -57,9 +57,9 @@ export function App() {
             codexTarget: runnerCapabilities.report?.codex.target
           })
         }
-        onComplete={() => selectedIssue && board.completeIssue(selectedIssue.id)}
-        onRevise={(comment) => selectedIssue && board.reviseIssue(selectedIssue.id, comment)}
-        onRemove={() => selectedIssue && board.removeIssue(selectedIssue.id)}
+        onComplete={() => selectedIssue && void board.completeIssue(selectedIssue.id)}
+        onRevise={(comment) => selectedIssue && void board.reviseIssue(selectedIssue.id, comment)}
+        onRemove={() => selectedIssue && void board.removeIssue(selectedIssue.id)}
         onScopeComment={(comment) => selectedIssue && board.markScopeChange(selectedIssue.id, comment)}
       />
     </div>

@@ -1,5 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.route("**/*", (route) => {
+    if (new URL(route.request().url()).pathname.startsWith("/api/")) {
+      void route.abort();
+      return;
+    }
+    void route.continue();
+  });
+});
+
 async function createRequest(page: Page, title: string, body: string, file: string, area: string) {
   await page.getByPlaceholder("예: 계획 승인 충돌 검사 추가").fill(title);
   await page.getByPlaceholder("수정하거나 추가할 내용을 적어주세요.").fill(body);

@@ -4,25 +4,24 @@ import { detectRunnerCapabilities } from "./runner/capabilities";
 import { SimulatedRunnerAdapter } from "./runner/simulatedRunner";
 import { RunnerService } from "./runner/runnerService";
 import type { IssueType } from "../shared/types";
+import type { Repository } from "./repositories";
 import type { CreateGitWorktreeInput, WorktreeMetadata } from "./git/worktreeService";
 import { CodexRunnerAdapter } from "./runner/codexRunner";
 
 export interface RegisterRoutesOptions {
+  repository?: Repository;
   createWorktree?: (input: CreateGitWorktreeInput) => Promise<WorktreeMetadata>;
 }
  
 export async function registerRoutes(app: FastifyInstance, options: RegisterRoutesOptions = {}) {
+  const loadRepo = () => (options.repository ? Promise.resolve(options.repository) : getRepository());
+
   app.get("/api/board", async () => {
-    const repo = await getRepository();
-    return {
-      projects: repo.listProjects(),
-      issues: repo.listIssueDetails(),
-      history: repo.listHistory()
-    };
+    return boardSnapshot(await loadRepo());
   });
 
   app.get("/api/projects", async () => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     return repo.listProjects();
   });
 
@@ -40,7 +39,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
       requiredValidationCommands?: string[];
     };
   }>("/api/projects", async (request) => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     return repo.createProject({
       name: request.body.name,
       repositoryPath: request.body.repositoryPath,
@@ -59,7 +58,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
       areaHint?: string;
     };
   }>("/api/issues", async (request) => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     const issue = repo.createIssue({
       projectId: request.body.projectId,
       title: request.body.title,
@@ -79,7 +78,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
   });
 
   app.post<{ Params: { issueId: string }; Body: { body: string } }>("/api/issues/:issueId/messages", async (request, reply) => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     const detail = repo.getIssueDetail(request.params.issueId);
     if (!detail) return reply.code(404).send({ message: "Issue not found" });
     repo.appendMessage({ issueId: request.params.issueId, author: "user", body: request.body.body });
@@ -87,7 +86,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
   });
 
   app.post<{ Params: { issueId: string } }>("/api/issues/:issueId/plan", async (request, reply) => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     const detail = repo.getIssueDetail(request.params.issueId);
     if (!detail) return reply.code(404).send({ message: "Issue not found" });
     repo.savePlan(createDraftPlanInput(detail.issue.id, detail.issue.title));
@@ -95,7 +94,7 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
   });
 
   app.post<{ Params: { issueId: string; planId: string } }>("/api/issues/:issueId/plans/:planId/approve", async (request, reply) => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     const detail = repo.getIssueDetail(request.params.issueId);
     if (!detail) return reply.code(404).send({ message: "Issue not found" });
     const service = new RunnerService(repo, process.env.WORK_BOARD_RUNNER === "codex" ? new CodexRunnerAdapter() : new SimulatedRunnerAdapter(), {
@@ -105,12 +104,51 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     return repo.getIssueDetail(request.params.issueId);
   });
 
+  app.post<{ Params: { issueId: string } }>("/api/issues/:issueId/review/complete", async (request, reply) => {
+    const repo = await loadRepo();
+    if (!repo.getIssueDetail(request.params.issueId)) return reply.code(404).send({ message: "Issue not found" });
+    const service = new RunnerService(repo, new SimulatedRunnerAdapter(), { createWorktree: options.createWorktree });
+    try {
+      service.completeAndMerge(request.params.issueId);
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "Could not complete issue" });
+    }
+    return boardSnapshot(repo);
+  });
+
+  app.post<{ Params: { issueId: string }; Body: { comment: string } }>("/api/issues/:issueId/review/revise", async (request, reply) => {
+    const repo = await loadRepo();
+    if (!repo.getIssueDetail(request.params.issueId)) return reply.code(404).send({ message: "Issue not found" });
+    const service = new RunnerService(repo, new SimulatedRunnerAdapter(), { createWorktree: options.createWorktree });
+    try {
+      service.requestRevision(request.params.issueId, request.body.comment);
+    } catch (error) {
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "Could not request revision" });
+    }
+    return repo.getIssueDetail(request.params.issueId);
+  });
+
+  app.post<{ Params: { issueId: string } }>("/api/issues/:issueId/review/remove", async (request, reply) => {
+    const repo = await loadRepo();
+    if (!repo.getIssueDetail(request.params.issueId)) return reply.code(404).send({ message: "Issue not found" });
+    repo.removeUnmergedIssue(request.params.issueId);
+    return boardSnapshot(repo);
+  });
+
   app.get<{ Params: { issueId: string } }>("/api/issues/:issueId", async (request, reply) => {
-    const repo = await getRepository();
+    const repo = await loadRepo();
     const detail = repo.getIssueDetail(request.params.issueId);
     if (!detail) return reply.code(404).send({ message: "Issue not found" });
     return detail;
   });
+}
+
+function boardSnapshot(repo: Repository) {
+  return {
+    projects: repo.listProjects(),
+    issues: repo.listIssueDetails(),
+    history: repo.listHistory()
+  };
 }
 
 function createDraftPlanInput(issueId: string, title: string, fileHint?: string, areaHint?: string) {

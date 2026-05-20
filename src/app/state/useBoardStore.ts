@@ -5,9 +5,12 @@ import type { HistoryRecord, IssueStatus, IssueType, Project } from "../../share
 import {
   addIssueMessage,
   approveIssuePlan,
+  completeIssueOnServer,
   createIssueOnServer,
   draftIssuePlan,
   getBoardSnapshot,
+  removeIssueOnServer,
+  reviseIssueOnServer,
   type ApiBoardSnapshot,
   type ApiIssueDetail
 } from "../api/board";
@@ -243,7 +246,12 @@ export function useBoardStore() {
     );
   }
 
-  function completeIssue(issueId: string) {
+  async function completeIssue(issueId: string) {
+    if (serverBacked) {
+      applyServerSnapshot(await completeIssueOnServer(issueId));
+      return;
+    }
+
     const issue = issues.find((item) => item.id === issueId);
     if (!issue || issue.status !== "review_request" || issue.run?.validation !== "passing" || !issue.plan) return;
     const record: HistoryRecord = {
@@ -267,8 +275,13 @@ export function useBoardStore() {
     setIssues((current) => current.map((item) => (item.id === issueId ? { ...item, status: "completed" } : item)));
   }
 
-  function reviseIssue(issueId: string, comment: string) {
+  async function reviseIssue(issueId: string, comment: string) {
     if (!comment.trim()) return;
+    if (serverBacked) {
+      mergeServerIssue(await reviseIssueOnServer(issueId, comment));
+      return;
+    }
+
     setIssues((current) =>
       current.map((issue) =>
         issue.id === issueId
@@ -283,7 +296,12 @@ export function useBoardStore() {
     );
   }
 
-  function removeIssue(issueId: string) {
+  async function removeIssue(issueId: string) {
+    if (serverBacked) {
+      applyServerSnapshot(await removeIssueOnServer(issueId));
+      return;
+    }
+
     setIssues((current) => current.filter((issue) => issue.id !== issueId || issue.status === "completed"));
   }
 

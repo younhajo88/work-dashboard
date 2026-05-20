@@ -50,3 +50,15 @@ export function draftIssuePlan(issueId: string): Promise<ApiIssueDetail> {
 export function approveIssuePlan(issueId: string, planId: string): Promise<ApiIssueDetail> {
   return apiPost<ApiIssueDetail>(`/api/issues/${issueId}/plans/${planId}/approve`, {});
 }
+
+export function completeIssueOnServer(issueId: string): Promise<ApiBoardSnapshot> {
+  return apiPost<ApiBoardSnapshot>(`/api/issues/${issueId}/review/complete`, {});
+}
+
+export function reviseIssueOnServer(issueId: string, comment: string): Promise<ApiIssueDetail> {
+  return apiPost<ApiIssueDetail>(`/api/issues/${issueId}/review/revise`, { comment });
+}
+
+export function removeIssueOnServer(issueId: string): Promise<ApiBoardSnapshot> {
+  return apiPost<ApiBoardSnapshot>(`/api/issues/${issueId}/review/remove`, {});
+}
