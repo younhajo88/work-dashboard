@@ -58,6 +58,10 @@ export class Repository {
     return [...this.projects.values()];
   }
 
+  getProject(projectId: string): Project | undefined {
+    return this.projects.get(projectId);
+  }
+
   createIssue(input: CreateIssueInput): Issue {
     const issue: Issue = {
       id: id("issue"),

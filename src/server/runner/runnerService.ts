@@ -1,13 +1,18 @@
 import type { Repository } from "../repositories";
 import { canTransitionIssue } from "../../shared/stateMachine";
 import type { HistoryRecord, WorkRun } from "../../shared/types";
-import { createWorktreeMetadata } from "../git/worktreeService";
+import { createGitWorktree, type CreateGitWorktreeInput, type WorktreeMetadata } from "../git/worktreeService";
 import type { RunnerAdapter } from "./types";
+
+interface RunnerServiceOptions {
+  createWorktree?: (input: CreateGitWorktreeInput) => Promise<WorktreeMetadata>;
+}
 
 export class RunnerService {
   constructor(
     private readonly repo: Repository,
-    private readonly adapter: RunnerAdapter
+    private readonly adapter: RunnerAdapter,
+    private readonly options: RunnerServiceOptions = {}
   ) {}
 
   async startApprovedRun(issueId: string, planId: string): Promise<WorkRun> {
@@ -18,7 +23,13 @@ export class RunnerService {
     const transition = canTransitionIssue(detail.issue.status, "running", { approved: true });
     if (!transition.allowed) throw new Error(transition.reason);
 
-    const worktree = createWorktreeMetadata(detail.issue.title);
+    const project = this.repo.getProject(detail.issue.projectId);
+    if (!project) throw new Error("Project not found.");
+    const worktree = await this.createWorktree({
+      repositoryPath: project.repositoryPath,
+      issueTitle: detail.issue.title,
+      baseBranch: project.defaultBranch
+    });
     let run = this.repo.createRun({
       issueId,
       planId,
@@ -55,6 +66,10 @@ export class RunnerService {
     const current = this.repo.getIssueDetail(issueId)?.issue;
     if (current) this.repo.updateIssue({ ...current, status: "review_request" });
     return run;
+  }
+
+  private createWorktree(input: CreateGitWorktreeInput): Promise<WorktreeMetadata> {
+    return this.options.createWorktree ? this.options.createWorktree(input) : createGitWorktree(input);
   }
 
   requestRevision(issueId: string, comment: string): void {

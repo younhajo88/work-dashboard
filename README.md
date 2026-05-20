@@ -18,10 +18,11 @@ The app currently implements the complete user-facing workflow with a simulated 
 - Destructive removal for unmerged review work
 - Completion history search and filters
 - Real Codex runner availability messaging with WSL Ubuntu detection
+- Backend git worktree creation for approved runs
 
 Real Codex process control is capability-gated. The simulated runner remains the safe UI default, while the backend now detects a launchable Codex CLI target and can invoke `codex exec --json` through the runner adapter.
 
-On this machine, the WindowsApps Codex executable is discoverable but can be blocked by `Access is denied` when invoked from automation. The app therefore prefers the user-local WSL Ubuntu Codex CLI at `/home/younha/.npm-global/bin/codex` when no `CODEX_EXECUTABLE` override is provided, and surfaces the selected target through `/api/runner/capabilities`.
+On this machine, the WindowsApps Codex executable is discoverable but can be blocked by `Access is denied` when invoked from automation. The app therefore prefers the user-local WSL Ubuntu Codex CLI at `/home/younha/.npm-global/bin/codex` when no `CODEX_EXECUTABLE` override is provided, and surfaces the selected target through `/api/runner/capabilities`. Server-side approved runs now create isolated git worktrees with `git worktree add -b codex/<request-slug>`.
 
 ## Setup
 
