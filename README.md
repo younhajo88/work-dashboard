@@ -93,6 +93,6 @@ npx playwright install chromium
 
 ## Notes
 
-- The backend domain services and runner abstractions are implemented and tested, but the current UI uses local browser persistence for the MVP workflow.
+- The UI loads and mutates board state through the local backend when it is available, including plan approval and review actions. Browser localStorage remains only as a fallback when the backend cannot be reached.
 - The real Codex runner adapter is capability-gated and launches `codex exec --json` through the resolved target.
-- Completion history persists in the browser between reloads for this MVP pass; server repository wiring is represented in tests and can be connected to the UI in the next hardening pass.
+- Active runs found after a server restart are marked as needing reconciliation so stale running state is not trusted blindly.

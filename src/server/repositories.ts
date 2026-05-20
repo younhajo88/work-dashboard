@@ -269,6 +269,30 @@ export class Repository {
     this.emitChange();
   }
 
+  markActiveRunsForReconciliation(): void {
+    const activeStatuses = new Set<WorkRun["status"]>(["queued", "running", "validating"]);
+    let changed = false;
+    for (const run of this.runs.values()) {
+      if (!activeStatuses.has(run.status)) continue;
+      this.runs.set(run.id, { ...run, status: "needs_reconciliation" });
+      const issue = this.issues.get(run.issueId);
+      if (issue && issue.status !== "completed") {
+        this.issues.set(issue.id, { ...issue, status: "needs_reconciliation", currentRunId: run.id });
+      }
+      const event: RunEvent = {
+        id: id("event"),
+        runId: run.id,
+        type: "environment_error",
+        summary: "Server restarted while this run was active. Reconciliation is required before continuing.",
+        raw: "server:restart:needs_reconciliation",
+        createdAt: new Date().toISOString()
+      };
+      this.runEvents.set(run.id, [...(this.runEvents.get(run.id) ?? []), event]);
+      changed = true;
+    }
+    if (changed) this.emitChange();
+  }
+
   snapshot(): RepositorySnapshot {
     return {
       projects: [...this.projects.values()],

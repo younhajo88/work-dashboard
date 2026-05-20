@@ -52,6 +52,38 @@ describe("persistent repository", () => {
     expect(reloaded.getRun(run.id)?.validationResults[0].summary).toBe("passed");
     expect(reloaded.searchHistory({ query: "abc123" })).toHaveLength(1);
   });
+
+  it("marks active runs as needing reconciliation after reload", async () => {
+    const filePath = await tempStateFile();
+    const repo = await createPersistentRepository(filePath);
+    const project = repo.createProject({ name: "Restart", repositoryPath: "C:/repo", defaultBranch: "main", requiredValidationCommands: ["npm test"] });
+    const issue = repo.createIssue({ projectId: project.id, title: "Interrupted work", requestText: "resume safely", type: "feature" });
+    const plan = repo.savePlan({
+      issueId: issue.id,
+      productPlan: "Restart product plan",
+      implementationPlan: "Restart implementation plan",
+      expectedFiles: ["src/app/restart.tsx"],
+      functionalAreas: ["runner"],
+      validationPlan: ["npm test"],
+      steps: ["Start", "Finish"]
+    });
+    const run = repo.createRun({
+      issueId: issue.id,
+      planId: plan.id,
+      adapterId: "codex",
+      branchName: "codex/interrupted-work",
+      worktreePath: "C:/repo/.worktrees/interrupted-work",
+      totalSteps: 2
+    });
+    repo.updateRun({ ...run, status: "running", currentStepIndex: 1 });
+    repo.updateIssue({ ...issue, status: "running", currentRunId: run.id });
+
+    const reloaded = await createPersistentRepository(filePath);
+
+    expect(reloaded.getRun(run.id)?.run.status).toBe("needs_reconciliation");
+    expect(reloaded.getIssueDetail(issue.id)?.issue.status).toBe("needs_reconciliation");
+    expect(reloaded.getRun(run.id)?.events.at(-1)?.type).toBe("environment_error");
+  });
 });
 
 async function tempStateFile(): Promise<string> {

@@ -4,10 +4,12 @@ import { Repository, type RepositorySnapshot } from "./repositories";
 
 export async function createPersistentRepository(filePath: string): Promise<Repository> {
   const snapshot = readSnapshot(filePath);
-  return new Repository({
+  const repo = new Repository({
     snapshot,
     onChange: (nextSnapshot) => writeSnapshot(filePath, nextSnapshot)
   });
+  repo.markActiveRunsForReconciliation();
+  return repo;
 }
 
 function readSnapshot(filePath: string): RepositorySnapshot | undefined {
