@@ -1,4 +1,5 @@
 import type { HistoryRecord, Issue, IssueMessage, IssueType, Plan, PlanStep, Project, RunEvent, ValidationResult, WorkRun } from "../../shared/types";
+import type { HistoryFilters } from "../../shared/history";
 import { apiGet, apiPost } from "./client";
 
 export interface ApiRunDetail {
@@ -33,6 +34,15 @@ export interface CreateIssueRequest {
 
 export function getBoardSnapshot(): Promise<ApiBoardSnapshot> {
   return apiGet<ApiBoardSnapshot>("/api/board");
+}
+
+export function getHistoryRecords(filters: HistoryFilters = {}): Promise<HistoryRecord[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") params.set(key, String(value));
+  }
+  const query = params.toString();
+  return apiGet<HistoryRecord[]>(query ? `/api/history?${query}` : "/api/history");
 }
 
 export function createIssueOnServer(input: CreateIssueRequest): Promise<ApiIssueDetail> {

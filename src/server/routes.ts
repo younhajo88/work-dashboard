@@ -4,6 +4,7 @@ import { detectRunnerCapabilities } from "./runner/capabilities";
 import { SimulatedRunnerAdapter } from "./runner/simulatedRunner";
 import { RunnerService } from "./runner/runnerService";
 import type { IssueType } from "../shared/types";
+import type { HistoryFilters } from "../shared/history";
 import type { Repository } from "./repositories";
 import type { CreateGitWorktreeInput, WorktreeMetadata } from "./git/worktreeService";
 import { CodexRunnerAdapter } from "./runner/codexRunner";
@@ -23,6 +24,11 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
   app.get("/api/projects", async () => {
     const repo = await loadRepo();
     return repo.listProjects();
+  });
+
+  app.get<{ Querystring: HistoryQuery }>("/api/history", async (request) => {
+    const repo = await loadRepo();
+    return repo.searchHistory(toHistoryFilters(request.query));
   });
 
   app.get("/api/runner/capabilities", async () => {
@@ -141,6 +147,30 @@ export async function registerRoutes(app: FastifyInstance, options: RegisterRout
     if (!detail) return reply.code(404).send({ message: "Issue not found" });
     return detail;
   });
+}
+
+interface HistoryQuery {
+  query?: string;
+  projectId?: string;
+  requestType?: IssueType;
+  functionalArea?: string;
+  revisionCount?: string;
+  mergeState?: "merged";
+  dateFrom?: string;
+  dateTo?: string;
+}
+
+function toHistoryFilters(query: HistoryQuery): HistoryFilters {
+  return {
+    query: query.query,
+    projectId: query.projectId,
+    requestType: query.requestType,
+    functionalArea: query.functionalArea,
+    revisionCount: query.revisionCount === undefined ? undefined : Number(query.revisionCount),
+    mergeState: query.mergeState,
+    dateFrom: query.dateFrom,
+    dateTo: query.dateTo
+  };
 }
 
 function boardSnapshot(repo: Repository) {

@@ -9,6 +9,7 @@ import {
   createIssueOnServer,
   draftIssuePlan,
   getBoardSnapshot,
+  getHistoryRecords,
   removeIssueOnServer,
   reviseIssueOnServer,
   type ApiBoardSnapshot,
@@ -137,6 +138,19 @@ export function useBoardStore() {
   useEffect(() => {
     if (!serverBacked) savePersistedBoardState({ selectedProjectId, issues, history });
   }, [history, issues, selectedProjectId, serverBacked]);
+
+  useEffect(() => {
+    if (!serverBacked) return;
+    let active = true;
+    void getHistoryRecords({ ...historyFilters, projectId: selectedProjectId })
+      .then((records) => {
+        if (active) setHistory(records);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [historyFilters, selectedProjectId, serverBacked]);
 
   const selectedProject = projects.find((project) => project.id === selectedProjectId) ?? projects[0] ?? fallbackProject;
   const projectIssues = issues.filter((issue) => issue.projectId === selectedProject.id);

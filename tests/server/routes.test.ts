@@ -95,6 +95,23 @@ describe("server routes", () => {
     expect(removed.statusCode).toBe(200);
     expect(removed.json().issues.some((item: { issue: { id: string } }) => item.issue.id === removableIssue.id)).toBe(false);
   });
+
+  it("filters completion history through query parameters", async () => {
+    const repo = await createRepository();
+    const project = repo.createProject({ name: "Routes", repositoryPath: "C:/routes", defaultBranch: "main", requiredValidationCommands: ["npm test"] });
+    createHistoryRecord(repo, project.id, "Approval gate", "approval", "src/shared/conflicts.ts", "abc123");
+    createHistoryRecord(repo, project.id, "Runner timeout", "runner", "src/server/runner/processSupervisor.ts", "def456");
+    const app = Fastify();
+    await registerRoutes(app, { repository: repo });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/history?projectId=${project.id}&query=conflicts%20abc123&functionalArea=approval&requestType=feature&mergeState=merged`
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().map((record: { title: string }) => record.title)).toEqual(["Approval gate"]);
+  });
 });
 
 async function createApprovedReviewIssue(app: ReturnType<typeof Fastify>, title = "Review action run") {
@@ -115,4 +132,23 @@ async function createApprovedReviewIssue(app: ReturnType<typeof Fastify>, title 
   const detail = created.json();
   await app.inject({ method: "POST", url: `/api/issues/${detail.issue.id}/plans/${detail.plans[0].id}/approve` });
   return detail.issue;
+}
+
+function createHistoryRecord(repo: Awaited<ReturnType<typeof createRepository>>, projectId: string, title: string, area: string, file: string, commit: string) {
+  const issue = repo.createIssue({ projectId, title, requestText: `Complete ${title}`, type: "feature" });
+  repo.savePlan({
+    issueId: issue.id,
+    productPlan: title,
+    implementationPlan: `Implement ${title}`,
+    expectedFiles: [file],
+    functionalAreas: [area],
+    validationPlan: ["npm test"],
+    steps: ["Implement", "Verify"]
+  });
+  repo.createHistoryFromIssue(issue.id, {
+    changedFiles: [file],
+    validationSummary: "passed",
+    mergeCommit: commit,
+    outcome: "success"
+  });
 }
